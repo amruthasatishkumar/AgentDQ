@@ -62,6 +62,10 @@ Here 30% of prices arrived in cents. A classic gate fails the whole batch; agent
 
 Alpha (0.1.0a1). The API may change before 0.1.0. Runs offline with no LLM needed; CI tests Python 3.10 and 3.12.
 
+## Acknowledgements
+
+The corruption families are ported from the ICDM paper code. The scaffolding, docstrings and tests were drafted with AI assistance (Claude), and the profiling, detection and validation code was implemented with AI assistance (GitHub Copilot). The design follows the author's paper, and the commit history records the AI co-authorship.
+
 ## Licence
 
 MIT
