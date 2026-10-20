@@ -26,6 +26,16 @@ def _features(df: pd.DataFrame, roles: ColumnRoles) -> list[str]:
     return [c for c in df.columns if c not in roles.protected]
 
 
+def _non_ascii_share(s: pd.Series) -> float:
+    s = s.dropna().astype(str)
+    return float(s.map(lambda x: not x.isascii()).mean()) if len(s) else 0.0
+
+
+def _marker_share(s: pd.Series) -> float:
+    s = s.dropna().astype(str)
+    return float(s.map(lambda x: any(m in x for m in MOJIBAKE_MARKERS)).mean()) if len(s) else 0.0
+
+
 # ---------------- Step 3a ----------------
 def detect_schema_drift(batch: pd.DataFrame, reference: pd.DataFrame, roles: ColumnRoles) -> float:
     """Share of the reference's feature columns that are missing from the batch."""
@@ -59,7 +69,14 @@ def detect_type_flip(batch: pd.DataFrame, reference: pd.DataFrame, roles: Column
     """For feature columns that are numeric in the reference and present in the batch:
     the share of non-null batch values that are Python strings. Mean over those columns.
     """
-    raise NotImplementedError("Step 3b")
+    vals = []
+    for c in _features(reference, roles):
+        if c not in batch.columns or not pd.api.types.is_numeric_dtype(reference[c]):
+            continue
+        s = batch[c].dropna()
+        if len(s):
+            vals.append(s.map(lambda x: isinstance(x, str)).mean())
+    return _clip(float(np.mean(vals))) if vals else 0.0
 
 
 def detect_currency_unit_drift(batch: pd.DataFrame, reference: pd.DataFrame, roles: ColumnRoles) -> float:
@@ -67,7 +84,15 @@ def detect_currency_unit_drift(batch: pd.DataFrame, reference: pd.DataFrame, rol
     above 2 x the reference maximum (a x100 shift lands far above anything seen).
     Coerce with pd.to_numeric(errors="coerce") first. Mean over those columns.
     """
-    raise NotImplementedError("Step 3b")
+    vals = []
+    for c in roles.monetary:
+        if c not in batch.columns or c not in reference.columns:
+            continue
+        ref_max = pd.to_numeric(reference[c], errors="coerce").max()
+        b = pd.to_numeric(batch[c], errors="coerce").dropna()
+        if len(b) and np.isfinite(ref_max):
+            vals.append((b > 2 * ref_max).mean())
+    return _clip(float(np.mean(vals))) if vals else 0.0
 
 
 # ---------------- Step 3c ----------------
@@ -80,14 +105,30 @@ def detect_mojibake_roundtrip(batch: pd.DataFrame, reference: pd.DataFrame, role
     where "marker share" = share of non-null values containing any MOJIBAKE_MARKERS.
     Skip columns whose reference has no non-ASCII values. Mean over the rest.
     """
-    raise NotImplementedError("Step 3c")
+    vals = []
+    for c in sorted(roles.text | roles.taxonomy):
+        if c not in batch.columns or c not in reference.columns:
+            continue
+        non_ascii = _non_ascii_share(reference[c])
+        if non_ascii == 0:
+            continue
+        vals.append((_marker_share(batch[c]) - _marker_share(reference[c])) / non_ascii)
+    return _clip(float(np.mean(vals))) if vals else 0.0
 
 
 def detect_category_taxonomy_drift(batch: pd.DataFrame, reference: pd.DataFrame, roles: ColumnRoles) -> float:
     """For roles.taxonomy columns in both frames: the share of non-null batch values
     (as str) that never appear in the reference column. Mean over those columns.
     """
-    raise NotImplementedError("Step 3c")
+    vals = []
+    for c in sorted(roles.taxonomy):
+        if c not in batch.columns or c not in reference.columns:
+            continue
+        s = batch[c].dropna().astype(str)
+        if len(s):
+            vocab = set(reference[c].dropna().astype(str))
+            vals.append((~s.isin(vocab)).mean())
+    return _clip(float(np.mean(vals))) if vals else 0.0
 
 
 # ---------------- Step 3d ----------------
