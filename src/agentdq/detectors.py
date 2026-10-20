@@ -145,4 +145,5 @@ DETECTORS = {
 def detect_all(batch: pd.DataFrame, reference: pd.DataFrame,
                roles: ColumnRoles | None = None) -> dict[str, float]:
     """Run every detector in DETECTORS and return {family: estimated severity}."""
-    raise NotImplementedError("Step 3d")
+    roles = roles or ColumnRoles()
+    return {family: fn(batch, reference, roles) for family, fn in DETECTORS.items()}
