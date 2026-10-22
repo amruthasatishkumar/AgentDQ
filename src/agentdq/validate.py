@@ -16,7 +16,8 @@ from dataclasses import dataclass, field
 import pandas as pd
 
 from agentdq.corruption import ColumnRoles
-from agentdq.detectors import detect_all
+from agentdq.corruption import CHANNEL_SCOPED
+from agentdq.detectors import channel_loss, detect_all
 from agentdq.profile import SensitivityProfile
 
 
@@ -78,8 +79,12 @@ def check_leakage(profiles: list[SensitivityProfile], label_cols) -> None:
 
 # ---------------- Step 4b ----------------
 def consumer_risk(profile: SensitivityProfile, detected: dict[str, float],
-                  warn: float, fail: float) -> ConsumerRisk:
+                  warn: float, fail: float, batch: pd.DataFrame | None = None) -> ConsumerRisk:
     """Score one consumer.
+
+    - if `batch` is given, families in CHANNEL_SCOPED (schema_drift) are re-detected as
+      channel_loss(batch, profile.channels): the share of THIS consumer's columns that are
+      missing, in the same units its profile was measured in.
 
     - contributions: for every family in BOTH profile.families and detected,
       detected[family] * profile.families[family].slope. Negative slopes (a defect that
@@ -88,6 +93,9 @@ def consumer_risk(profile: SensitivityProfile, detected: dict[str, float],
     - verdict: "fail" if risk >= fail, else "warn" if risk >= warn, else "pass"
     - top_defects: families with contribution > 0, largest first, at most 3
     """
+    if batch is not None and profile.channels:
+        detected = {**detected, **{f: channel_loss(batch, profile.channels)
+                                   for f in CHANNEL_SCOPED if f in detected}}
     contributions = {f: detected[f] * max(0.0, r.slope)
                      for f, r in profile.families.items() if f in detected}
     risk = sum(contributions.values())
@@ -112,7 +120,7 @@ def validate(batch: pd.DataFrame, reference: pd.DataFrame, profiles: list[Sensit
     """
     check_leakage(profiles, label_cols)
     detected = detect_all(batch, reference, roles)
-    consumers = [consumer_risk(p, detected, warn, fail) for p in profiles]
+    consumers = [consumer_risk(p, detected, warn, fail, batch) for p in profiles]
     baseline = "fail" if any(s >= baseline_threshold for s in detected.values()) else "pass"
     return Report(detected, consumers, baseline,
                   {"warn": warn, "fail": fail, "baseline": baseline_threshold})

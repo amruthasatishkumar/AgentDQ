@@ -8,6 +8,9 @@ Scripts behind the paper *Is This Table Clean for You? Consumer-Aware Data Valid
 | `build_oulad.py` | Builds the OULAD day-28 early-warning table (fail or withdraw vs pass) |
 | `run_oulad.py` | OULAD: XGBoost tree and an engagement-only logistic regression, RQ1–RQ3 |
 | `run_oulad_agent.py` | Adds a gpt-4o-mini agent on OULAD (Azure OpenAI), RQ1 for all three consumers |
+| `rescore_oulad_agent.py` | Re-scores a finished agent run with the current package, reusing the agent's measured drops (no new calls) |
+| `triage.py` | Share of each consumer's 10% most damaging batches that each score puts in its own top 10% |
+| `fig_scatter.py` | Figure: per-consumer risk and failed-check count against realised damage |
 
 All four share the batch, scoring and evaluation code in `run_experiments.py`: 0–3 corruption families per batch at severity 0–0.4, ground truth is the paired clean-minus-corrupted AUROC, and Spearman ρ is reported with batch-bootstrap CIs.
 
@@ -45,14 +48,24 @@ python run_oulad_agent.py --data oulad_day28.parquet --out results/oulad_agent -
 python run_oulad_agent.py --data oulad_day28.parquet --out results/oulad_agent
 ```
 
+Runs made before the channel-scoped schema-drift probe (see below) can be re-scored without new calls:
+
+```bash
+python rescore_oulad_agent.py --data oulad_day28.parquet --old results/oulad_agent --out results/oulad_agent_v2
+```
+
+`triage.py` and `fig_scatter.py` read `results/kaggle_v2_b1000_rows500`, `results/oulad_v2_b1000_rows500` and `results/oulad_agent_v2`.
+
 ## Main results (RQ1, Spearman ρ with realised damage)
 
 | Data | Consumer | agentdq | Failed-check count | Summed severity |
 |---|---|---|---|---|
-| Olist | tree | 0.52 | 0.41 | 0.43 |
-| Olist | text | 0.77 | 0.60 | 0.63 |
+| Olist | tree | 0.53 | 0.41 | 0.43 |
+| Olist | text | 0.88 | 0.60 | 0.63 |
 | OULAD | tree | 0.84 | 0.64 | 0.67 |
-| OULAD | engagement | 0.71 | 0.50 | 0.52 |
+| OULAD | engagement | 0.70 | 0.50 | 0.52 |
 | OULAD (150 × 200 rows) | agent | 0.34 | 0.30 | 0.29 |
 
 The first four rows use 1,000 batches of 500 rows. The agent is the most robust consumer (mean damage 0.007 AUROC vs 0.025 for the tree); 62% of batches that fail at least one check cost it under 0.01.
+
+Schema drift is probed on each consumer's own columns and detected as the share of those columns missing from a batch. With a random-column probe, the Olist text model (2 of 23 columns) was never hit during profiling and scored 0.77.

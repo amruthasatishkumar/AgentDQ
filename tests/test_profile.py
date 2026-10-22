@@ -100,3 +100,19 @@ def test_json_roundtrip(probe, tmp_path):
     p = profile_sensitivity(CountingStub(), probe, "y", roles=ROLES, families=["missing_injection"])
     p.to_json(tmp_path / "p.json")
     assert SensitivityProfile.from_json(tmp_path / "p.json") == p
+
+
+def test_schema_drift_is_probed_on_the_consumers_own_columns():
+    """With many unread columns, a random rename would usually miss "x". The probe must
+    rename x anyway and record the share of the consumer's columns it lost."""
+    rng = np.random.default_rng(1)
+    wide = pd.DataFrame({"y": rng.integers(0, 2, 400)})
+    wide["x"] = wide.y * 4 + rng.normal(0, 1.5, 400)
+    for i in range(30):
+        wide[f"pad{i}"] = rng.normal(size=400)
+    p = profile_sensitivity(CountingStub(), wide, "y", roles=ColumnRoles.of(protected={"y"}),
+                            families=["schema_drift"], n_rows=100)
+    fr = p.families["schema_drift"]
+    assert fr.touches_channels
+    assert fr.severities == [1.0, 1.0]          # one of one channel lost at both severities
+    assert fr.slope > 0.3                        # losing x destroys the stub

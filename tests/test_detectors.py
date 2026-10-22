@@ -63,3 +63,11 @@ def test_detect_all(reference, batch):
     assert set(out) == set(DETECTORS)
     assert all(0.0 <= v <= 1.0 for v in out.values())
     assert max(out, key=out.get) == "currency_unit_drift"
+
+
+def test_channel_loss():
+    from agentdq.detectors import channel_loss
+    df = pd.DataFrame({"a": [1], "b": [2]})
+    assert channel_loss(df, ["a", "b"]) == 0.0
+    assert channel_loss(df.rename(columns={"a": "z"}), ["a", "b"]) == 0.5
+    assert channel_loss(df, []) == 0.0
