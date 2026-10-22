@@ -1,6 +1,6 @@
 # Experiments: consumer-aware validation
 
-Scripts behind the paper *Is This Table Clean for You? Consumer-Aware Data Validation for Predictive Models and LLM Agents*. They use the released `agentdq` package; no data is stored here.
+Scripts behind the paper *Consumer-Aware Data Validation for Predictive Models and LLM Agents*. They use the released `agentdq` package; no data is stored here.
 
 | Script | What it does |
 |---|---|
