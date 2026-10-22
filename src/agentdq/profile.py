@@ -16,7 +16,8 @@ import numpy as np
 import pandas as pd
 
 from agentdq.consumers import Consumer
-from agentdq.corruption import CANONICAL, ColumnRoles, apply
+from agentdq.corruption import CANONICAL, CHANNEL_SCOPED, ColumnRoles, apply, schema_drift_on
+from agentdq.detectors import channel_loss
 
 
 def auroc(y: np.ndarray, s: np.ndarray) -> float:
@@ -110,6 +111,12 @@ def profile_sensitivity(consumer: Consumer, probe_df: pd.DataFrame, label_col: s
     Corruptions that add rows (duplicate_rows) also add labels: take labels from the
     corrupted frame's label_col, not from the clean sample.
 
+    Families in CHANNEL_SCOPED (schema_drift) hit a random subset of columns, so a random
+    probe can miss a consumer that reads only a few of them. They are applied to the
+    consumer's own channels instead (at least one column per probe), and the recorded
+    severity is the share of those channels actually affected, which is what
+    validate() detects for that consumer.
+
     families="default" means CANONICAL (the 6 ICDM families). The label column must be in
     roles.protected so it is never corrupted; add it if the caller forgot.
     """
@@ -121,6 +128,7 @@ def profile_sensitivity(consumer: Consumer, probe_df: pd.DataFrame, label_col: s
 
     clean_scores = []
     drops = {f: [[] for _ in sevs] for f in fams}  # drops[family][severity_idx] -> one per seed
+    realised = {f: [[] for _ in sevs] for f in fams if f in CHANNEL_SCOPED}
     touched = {f: False for f in fams}
 
     for seed in range(seeds):
@@ -129,7 +137,11 @@ def profile_sensitivity(consumer: Consumer, probe_df: pd.DataFrame, label_col: s
         clean_scores.append(clean_au)
         for fam in fams:
             for i, sev in enumerate(sevs):
-                corrupted = apply(sample, fam, sev, seed, roles)
+                if fam in CHANNEL_SCOPED:
+                    corrupted = schema_drift_on(sample, consumer.channels, sev, seed)
+                    realised[fam][i].append(channel_loss(corrupted, consumer.channels))
+                else:
+                    corrupted = apply(sample, fam, sev, seed, roles)
                 if touches_channels(sample, corrupted, consumer.channels):
                     touched[fam] = True
                     bad = auroc(corrupted[label_col].to_numpy(), consumer.score(corrupted))
@@ -149,9 +161,10 @@ def profile_sensitivity(consumer: Consumer, probe_df: pd.DataFrame, label_col: s
             means.append(m)
             lows.append(float(min(lo, m)))
             highs.append(float(max(hi, m)))
-        s = np.asarray(sevs)
+        fam_sevs = ([float(np.mean(r)) for r in realised[fam]] if fam in realised else sevs)
+        s = np.asarray(fam_sevs)
         slope = float((s * np.asarray(means)).sum() / (s ** 2).sum()) if len(s) else 0.0
-        results[fam] = FamilyResult(fam, touched[fam], sevs, means, lows, highs, slope)
+        results[fam] = FamilyResult(fam, touched[fam], fam_sevs, means, lows, highs, slope)
 
     return SensitivityProfile(consumer.name, list(consumer.channels),
                               float(np.mean(clean_scores)), results)

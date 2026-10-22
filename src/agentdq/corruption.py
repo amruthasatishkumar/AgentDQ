@@ -155,6 +155,20 @@ def schema_drift(df, severity, seed, roles):
     return df.rename(columns={feats[ci]: f"col_{seed}_{i:03d}" for i, ci in enumerate(chosen)})
 
 
+def schema_drift_on(df, columns, severity, seed):
+    """Rename `severity` fraction of `columns` (at least one) to synthetic names.
+
+    Used when profiling: renaming a random subset of the whole table can miss a consumer
+    that reads only a few columns, so the profile probes the consumer's own columns.
+    """
+    cols = [c for c in columns if c in df.columns]
+    if not cols or severity <= 0:
+        return df.copy()
+    k = min(len(cols), max(1, int(round(severity * len(cols)))))
+    chosen = np.random.default_rng(seed).choice(len(cols), size=k, replace=False)
+    return df.rename(columns={cols[ci]: f"col_{seed}_{i:03d}" for i, ci in enumerate(chosen)})
+
+
 def currency_unit_drift(df, severity, seed, roles):
     """Multiply `severity` fraction of monetary values by 100.
 
@@ -278,6 +292,11 @@ REGISTRY: dict[str, Family] = {
 # The six families used in the ICDM sweep.
 CANONICAL = ["missing_injection", "mojibake_roundtrip", "category_taxonomy_drift",
              "currency_unit_drift", "schema_drift", "type_flip"]
+
+
+# Families that hit a random subset of columns. They are profiled on the consumer's own
+# columns and detected as the share of those columns affected (see profile and validate).
+CHANNEL_SCOPED = frozenset({"schema_drift"})
 
 
 def list_families() -> list[str]:

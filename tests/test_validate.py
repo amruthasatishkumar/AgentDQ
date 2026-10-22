@@ -104,3 +104,16 @@ def test_markdown(reference, batch):
     md = validate(bad, reference, [TREE, AGENT], roles=ROLES).to_markdown()
     assert "| Consumer |" in md and "tree" in md and "agent" in md
     assert "mojibake_roundtrip" in md and "fail" in md and "pass" in md
+
+
+def test_schema_drift_risk_is_scoped_to_the_consumers_columns():
+    """Renaming one unread column out of two gives table-level severity 0.5, but no risk to
+    a consumer that reads only the other one; renaming its own column gives full risk."""
+    from agentdq.profile import FamilyResult
+    fr = FamilyResult("schema_drift", True, [1.0], [0.4], [0.4], [0.4], 0.4)
+    prof = SensitivityProfile("c", ["a"], 0.9, {"schema_drift": fr})
+    batch = pd.DataFrame({"a": [1.0], "zz": [2.0]})
+    assert consumer_risk(prof, {"schema_drift": 0.5}, 0.02, 0.05, batch).risk == 0.0
+    batch2 = pd.DataFrame({"zz": [1.0], "b": [2.0]})
+    assert consumer_risk(prof, {"schema_drift": 0.5}, 0.02, 0.05, batch2).risk == pytest.approx(0.4)
+    assert consumer_risk(prof, {"schema_drift": 0.5}, 0.02, 0.05).risk == pytest.approx(0.2)

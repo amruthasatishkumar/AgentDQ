@@ -139,8 +139,10 @@ def scores_for(profiles, batches, reference, roles, check_threshold=0.05):
             row[f"det_{f}"] = det.get(f, 0.0)
             row[f"true_{f}"] = true[f]
         for p in profiles:
-            row[f"risk_{p.consumer}"] = consumer_risk(p, det, 0.02, 0.05).risk
-            row[f"oracle_{p.consumer}"] = consumer_risk(p, true, 0.02, 0.05).risk
+            # schema drift is re-detected per consumer from the batch's columns (exact, so
+            # the oracle uses the same value)
+            row[f"risk_{p.consumer}"] = consumer_risk(p, det, 0.02, 0.05, bt["corrupted"]).risk
+            row[f"oracle_{p.consumer}"] = consumer_risk(p, true, 0.02, 0.05, bt["corrupted"]).risk
         rows.append(row)
     return pd.DataFrame(rows)
 

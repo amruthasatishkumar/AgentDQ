@@ -45,6 +45,17 @@ def detect_schema_drift(batch: pd.DataFrame, reference: pd.DataFrame, roles: Col
     return _clip(sum(c not in batch.columns for c in feats) / len(feats))
 
 
+def channel_loss(batch: pd.DataFrame, channels) -> float:
+    """Share of a consumer's columns that are missing from the batch (renamed or dropped).
+
+    The consumer-scoped version of detect_schema_drift, in the units the profile uses.
+    """
+    channels = list(channels)
+    if not channels:
+        return 0.0
+    return _clip(sum(c not in batch.columns for c in channels) / len(channels))
+
+
 def detect_missing_injection(batch: pd.DataFrame, reference: pd.DataFrame, roles: ColumnRoles) -> float:
     """Extra missingness, averaged over feature columns present in both frames.
 
